@@ -126,22 +126,39 @@ class JioFiWidgetProvider : AppWidgetProvider() {
     }
 
     private fun parseHtmlForBattery(html: String): BatteryResult {
-        // Multiple regex patterns to handle different JioFi firmware versions
-        val patterns = arrayOf(
-            Pattern.compile("battery\\s*level\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("capacity\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("batteryLevel\\s*[:=]?\\s*[\"']?(\\d+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("\"battery\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile(">(\\d+)\\s*%\\s*</", Pattern.CASE_INSENSITIVE)
+        // Primary pattern: Match your exact JioFi format
+        // <label id="lDashBatteryQuantity">63%</label>
+        val primaryPattern = Pattern.compile(
+            "id\\s*=\\s*[\"']lDashBatteryQuantity[\"'][^>]*>\\s*(\\d+)\\s*%?",
+            Pattern.CASE_INSENSITIVE
         )
         
-        for (pattern in patterns) {
-            val matcher = pattern.matcher(html)
-            if (matcher.find()) {
-                val level = matcher.group(1)?.toIntOrNull()
+        val matcher = primaryPattern.matcher(html)
+        if (matcher.find()) {
+            val level = matcher.group(1)?.toIntOrNull()
+            if (level != null && level in 0..100) {
+                // Check charging status from lDashChargeStatus
+                // <label id="lDashChargeStatus">Discharging</label>
+                val isCharging = html.contains("Charging", ignoreCase = false) &&
+                                 !html.contains("Discharging", ignoreCase = true)
+                return BatteryResult(success = true, level = level, isCharging = isCharging, error = null)
+            }
+        }
+        
+        // Fallback patterns for other JioFi firmware versions
+        val fallbackPatterns = arrayOf(
+            Pattern.compile(">\\s*(\\d+)\\s*%\\s*</label>", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("battery\\s*level\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\"battery\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
+        )
+        
+        for (pattern in fallbackPatterns) {
+            val fallbackMatcher = pattern.matcher(html)
+            if (fallbackMatcher.find()) {
+                val level = fallbackMatcher.group(1)?.toIntOrNull()
                 if (level != null && level in 0..100) {
-                    val isCharging = html.contains("charging", ignoreCase = true) ||
-                                     html.contains("plugged", ignoreCase = true)
+                    val isCharging = html.contains("Charging", ignoreCase = false) &&
+                                     !html.contains("Discharging", ignoreCase = true)
                     return BatteryResult(success = true, level = level, isCharging = isCharging, error = null)
                 }
             }
