@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
-    android:minHeight="70dp"
-    android:updatePeriodMillis="900000"
+    android:minHeight="60dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_jiofi"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:previewImage="@android:drawable/sym_def_app_icon">
-    <!-- updatePeriodMillis is 15 mins (900000ms), standard limitation -->
+    android:description="@string/widget_name">
+    <!-- 1800000ms = 30 minutes, balanced for battery life -->
 </appwidget-provider>

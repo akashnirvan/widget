@@ -1,78 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1e293b"
-    android:padding="8dp">
+    android:background="@drawable/widget_background"
+    android:padding="12dp"
+    android:id="@+id/widget_root">
 
-    <!-- Row 1: Header + Refresh Button -->
+    <!-- Header Row: Title + Refresh Button -->
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="JioFi"
-        android:textSize="12sp"
-        android:textColor="#94a3b8"
-        android:layout_alignParentStart="true" />
+        android:textSize="11sp"
+        android:textColor="@color/text_secondary"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true" />
 
     <ImageView
         android:id="@+id/btn_refresh"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:src="@android:drawable/ic_popup_sync"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@drawable/ic_refresh"
         android:layout_alignParentEnd="true"
-        android:contentDescription="Refresh"
-        android:clickable="true" 
-        android:tint="#f8fafc"/>
+        android:layout_alignParentTop="true"
+        android:contentDescription="@string/refresh"
+        android:clickable="true" />
 
-    <!-- Row 2: Main Battery Info -->
+    <!-- Main Content Row -->
     <LinearLayout
+        android:id="@+id/content_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:layout_below="@id/widget_title"
-        android:layout_marginTop="4dp">
+        android:layout_marginTop="8dp">
 
-        <!-- Thunderbolt Icon (Hidden unless charging) -->
+        <!-- Battery Icon -->
         <ImageView
-            android:id="@+id/icon_charging"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@android:drawable/stat_sys_warning"
-            android:tint="#22c55e"
-            android:visibility="gone"
-            android:layout_marginEnd="4dp"/>
-
-        <ProgressBar
-            android:id="@+id/progress_battery"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="0dp"
-            android:layout_height="8dp"
-            android:layout_weight="1"
-            android:max="100"
-            android:progress="60"
-            android:progressTint="#2563eb"
+            android:id="@+id/icon_battery"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_battery_normal"
             android:layout_marginEnd="8dp"/>
 
+        <!-- Progress Bar + Percentage Wrapper -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <ProgressBar
+                android:id="@+id/progress_battery"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_bar_style"/>
+
+            <TextView
+                android:id="@+id/text_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tap to refresh"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp"
+                android:layout_marginTop="2dp"/>
+        </LinearLayout>
+
+        <!-- Percentage Text -->
         <TextView
             android:id="@+id/text_percentage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="--%"
-            android:textColor="#f8fafc"
+            android:text="--"
+            android:textColor="@color/text_primary"
             android:textStyle="bold"
-            android:textSize="14sp" />
+            android:textSize="18sp"
+            android:layout_marginStart="8dp"/>
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/text_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/widget_title"
-        android:layout_centerHorizontal="true"
-        android:text="Offline"
-        android:textColor="#ef4444"
-        android:textSize="10sp"
-        android:visibility="gone"/>
 
 </RelativeLayout>

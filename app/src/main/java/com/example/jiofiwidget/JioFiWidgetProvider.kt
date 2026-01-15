@@ -6,152 +6,191 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.os.AsyncTask
-import android.view.View
 import android.widget.RemoteViews
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executors
 import java.util.regex.Pattern
 
+/**
+ * JioFi Battery Widget Provider
+ * 
+ * A lightweight, robust widget that displays JioFi router battery status.
+ * Features:
+ * - Minimal resource usage (no heavy dependencies)
+ * - Graceful error handling with visual feedback
+ * - Manual refresh via tap
+ * - Auto-update every 30 minutes (OS scheduled)
+ */
 class JioFiWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH = "com.example.jiofiwidget.ACTION_REFRESH"
+        
+        // JioFi router addresses (try multiple)
+        private val JIOFI_URLS = arrayOf(
+            "http://jiofi.local.html/",
+            "http://192.168.225.1/"
+        )
+        
+        // Connection timeouts
+        private const val CONNECT_TIMEOUT_MS = 4000
+        private const val READ_TIMEOUT_MS = 4000
+        
+        // Background executor for network operations
+        private val executor = Executors.newSingleThreadExecutor()
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        // Update each widget
         for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId)
+            updateWidget(context, appWidgetManager, appWidgetId)
         }
     }
 
-    // Handle button clicks
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_REFRESH) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
-            val ids = appWidgetManager.getAppWidgetIds(ComponentName(context, JioFiWidgetProvider::class.java))
-            onUpdate(context, appWidgetManager, ids)
+            val widgetIds = appWidgetManager.getAppWidgetIds(
+                ComponentName(context, JioFiWidgetProvider::class.java)
+            )
+            onUpdate(context, appWidgetManager, widgetIds)
         }
     }
 
-    private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        // Construct the RemoteViews object
+    private fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, widgetId: Int) {
         val views = RemoteViews(context.packageName, R.layout.widget_jiofi)
-
-        // Show loader/spinner (optional, or just status text)
-        views.setViewVisibility(R.id.text_status, View.VISIBLE)
-        views.setText(R.id.text_status, "Updating...")
-
-        // Intent for manual refresh
-        val intent = Intent(context, JioFiWidgetProvider::class.java).apply {
+        
+        // Set up refresh button click
+        val refreshIntent = Intent(context, JioFiWidgetProvider::class.java).apply {
             action = ACTION_REFRESH
         }
         val pendingIntent = PendingIntent.getBroadcast(
-            context, 0, intent,
+            context, 
+            0, 
+            refreshIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.btn_refresh, pendingIntent)
-
-        // Trigger Network Task
-        FetchBatteryTask(views, appWidgetId, appWidgetManager).execute()
+        views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
         
-        // Push update for "Updating..." state
-        appWidgetManager.updateAppWidget(appWidgetId, views)
+        // Show loading state
+        views.setTextViewText(R.id.text_status, "Updating...")
+        views.setTextViewText(R.id.text_percentage, "...")
+        appWidgetManager.updateAppWidget(widgetId, views)
+        
+        // Fetch battery status in background
+        executor.execute {
+            val result = fetchBatteryStatus()
+            updateUI(context, appWidgetManager, widgetId, result)
+        }
     }
 
-    // Async Task for Network (Deprecated in modern Android but perfect for "Minimal Dependencies/Code")
-    // For production, WorkManager or Coroutines is better, but this is a single file solution.
-    private class FetchBatteryTask(
-        val views: RemoteViews,
-        val widgetId: Int,
-        val manager: AppWidgetManager
-    ) : AsyncTask<Void, Void, BatteryResult>() {
-
-        data class BatteryResult(val level: Int?, val isCharging: Boolean, val error: String?)
-
-        override fun doInBackground(vararg params: Void?): BatteryResult {
-            var urlConnection: HttpURLConnection? = null
+    private fun fetchBatteryStatus(): BatteryResult {
+        for (url in JIOFI_URLS) {
             try {
-                // Try fetching
-                val url = URL("http://jiofi.local.html/") // Or 192.168.225.1
-                urlConnection = url.openConnection() as HttpURLConnection
-                urlConnection.connectTimeout = 3000
-                urlConnection.readTimeout = 3000
-                urlConnection.requestMethod = "GET"
-
-                if (urlConnection.responseCode == 200) {
-                    val reader = BufferedReader(InputStreamReader(urlConnection.inputStream))
-                    val sb = StringBuilder()
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        sb.append(line)
-                    }
-                    val html = sb.toString()
-
-                    // Regex Match
-                    // Matches "Battery Level: 80%" or "capacity: 80"
-                    val p = Pattern.compile("battery\\s*level\\s*[:=]\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
-                    val m = p.matcher(html)
-                    
-                    if (m.find()) {
-                        val level = m.group(1)?.toIntOrNull()
-                        val isCharging = html.contains("charging", ignoreCase = true)
-                        return BatteryResult(level, isCharging, null)
-                    }
-                    
-                    // Fallback pattern
-                    val p2 = Pattern.compile("capacity\\s*[:=]\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
-                    val m2 = p2.matcher(html)
-                     if (m2.find()) {
-                        val level = m2.group(1)?.toIntOrNull()
-                        val isCharging = html.contains("charging", ignoreCase = true)
-                        return BatteryResult(level, isCharging, null)
-                    }
-
-                    return BatteryResult(null, false, "Parse Err")
-                } else {
-                    return BatteryResult(null, false, "HTTP ${urlConnection.responseCode}")
-                }
-
+                val result = tryFetchFromUrl(url)
+                if (result.success) return result
             } catch (e: Exception) {
-                return BatteryResult(null, false, "Offline")
-            } finally {
-                urlConnection?.disconnect()
+                // Try next URL
             }
         }
+        return BatteryResult(success = false, level = 0, isCharging = false, error = "Offline")
+    }
 
-        override fun onPostExecute(result: BatteryResult) {
-            if (result.level != null) {
-                // Success
-                views.setViewVisibility(R.id.text_status, View.GONE)
-                views.setText(R.id.text_percentage, "${result.level}%")
-                views.setProgressBar(R.id.progress_battery, 100, result.level, false)
-
-                // Charging Status
-                if (result.isCharging) {
-                    views.setViewVisibility(R.id.icon_charging, View.VISIBLE)
-                    // Green color is handled by source drawable tint or setInt
-                    views.setInt(R.id.progress_battery, "setProgressTintList", Color.GREEN) 
-                } else {
-                    views.setViewVisibility(R.id.icon_charging, View.GONE)
-                    views.setInt(R.id.progress_battery, "setProgressTintList", Color.LTGRAY) 
-                }
-
-            } else {
-                // Failure
-                views.setViewVisibility(R.id.text_status, View.VISIBLE)
-                views.setText(R.id.text_status, result.error ?: "Err")
-                views.setText(R.id.text_percentage, "--")
-                views.setProgressBar(R.id.progress_battery, 100, 0, false)
-                views.setViewVisibility(R.id.icon_charging, View.GONE)
+    private fun tryFetchFromUrl(urlString: String): BatteryResult {
+        var connection: HttpURLConnection? = null
+        try {
+            val url = URL(urlString)
+            connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept", "text/html")
+            
+            if (connection.responseCode != 200) {
+                return BatteryResult(success = false, level = 0, isCharging = false, error = "HTTP ${connection.responseCode}")
             }
-
-            manager.updateAppWidget(widgetId, views)
+            
+            val html = BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+                reader.readText()
+            }
+            
+            return parseHtmlForBattery(html)
+            
+        } finally {
+            connection?.disconnect()
         }
     }
+
+    private fun parseHtmlForBattery(html: String): BatteryResult {
+        // Multiple regex patterns to handle different JioFi firmware versions
+        val patterns = arrayOf(
+            Pattern.compile("battery\\s*level\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("capacity\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("batteryLevel\\s*[:=]?\\s*[\"']?(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\"battery\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile(">(\\d+)\\s*%\\s*</", Pattern.CASE_INSENSITIVE)
+        )
+        
+        for (pattern in patterns) {
+            val matcher = pattern.matcher(html)
+            if (matcher.find()) {
+                val level = matcher.group(1)?.toIntOrNull()
+                if (level != null && level in 0..100) {
+                    val isCharging = html.contains("charging", ignoreCase = true) ||
+                                     html.contains("plugged", ignoreCase = true)
+                    return BatteryResult(success = true, level = level, isCharging = isCharging, error = null)
+                }
+            }
+        }
+        
+        return BatteryResult(success = false, level = 0, isCharging = false, error = "Parse Error")
+    }
+
+    private fun updateUI(context: Context, appWidgetManager: AppWidgetManager, widgetId: Int, result: BatteryResult) {
+        val views = RemoteViews(context.packageName, R.layout.widget_jiofi)
+        
+        // Re-set click listeners (required for RemoteViews)
+        val refreshIntent = Intent(context, JioFiWidgetProvider::class.java).apply {
+            action = ACTION_REFRESH
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, 0, refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.btn_refresh, pendingIntent)
+        views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+        
+        if (result.success) {
+            // Success: Show battery level
+            views.setTextViewText(R.id.text_percentage, "${result.level}%")
+            views.setProgressBar(R.id.progress_battery, 100, result.level, false)
+            
+            if (result.isCharging) {
+                views.setTextViewText(R.id.text_status, "Charging")
+                views.setImageViewResource(R.id.icon_battery, R.drawable.ic_battery_charging)
+            } else {
+                views.setTextViewText(R.id.text_status, "On Battery")
+                views.setImageViewResource(R.id.icon_battery, R.drawable.ic_battery_normal)
+            }
+        } else {
+            // Error: Show warning
+            views.setTextViewText(R.id.text_percentage, "--")
+            views.setTextViewText(R.id.text_status, result.error ?: "Offline")
+            views.setProgressBar(R.id.progress_battery, 100, 0, false)
+            views.setImageViewResource(R.id.icon_battery, R.drawable.ic_warning)
+        }
+        
+        appWidgetManager.updateAppWidget(widgetId, views)
+    }
+
+    data class BatteryResult(
+        val success: Boolean,
+        val level: Int,
+        val isCharging: Boolean,
+        val error: String?
+    )
 }

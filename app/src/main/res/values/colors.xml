@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colors -->
+    <color name="widget_bg">#CC1e293b</color>
+    <color name="widget_border">#334155</color>
+    <color name="text_primary">#f8fafc</color>
+    <color name="text_secondary">#94a3b8</color>
+    <color name="charging_green">#22c55e</color>
+    <color name="normal_grey">#64748b</color>
+    <color name="error_red">#ef4444</color>
+    <color name="progress_bg">#334155</color>
+</resources>
